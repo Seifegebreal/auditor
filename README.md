@@ -21,8 +21,11 @@ Copy-Item .env.example .env
 ```
 
 Set `OPENAI_API_KEY` and, if needed, `JUDGE_MODEL` in `.env`. Vision review is optional;
-set `VISION_MODEL` to a vision-capable LangChain model to enable it. LangSmith tracing is
-configured through the environment variables in `.env.example`. The rubric and output
+set `VISION_MODEL` to a vision-capable LangChain model to enable it. Judge responses allow
+up to 4,096 output tokens. Judge identity and criterion IDs are attached by the application;
+opinion fields use function calling with validated JSON-text fallback for compatible
+OpenAI-style providers. LangSmith tracing is configured through the environment variables
+in `.env.example`. The rubric and output
 directory must be selected through `AUDITOR_RUBRIC`/`AUDIT_OUTPUT_DIR` or the matching
 CLI options; clone hosts default to GitHub and GitLab and can be changed with
 `ALLOWED_GIT_HOSTS`.
@@ -40,7 +43,8 @@ uv run automaton-auditor `
   --output-dir audit/report_onself_generated
 ```
 
-The program prints the generated `audit_report.md` path. Use separate output directories
+The program prints the generated `audit_report.md` path and reports graph/provider
+errors to standard error. Use separate output directories
 for self, peer, and received reports. The target repository is cloned into a temporary
 directory and removed after analysis; its code is parsed but never executed.
 
