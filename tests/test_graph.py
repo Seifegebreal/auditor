@@ -42,7 +42,7 @@ def test_full_graph_runs_with_injected_fake_chat_model(tmp_path, monkeypatch):
     from src.graph import build_graph
 
     class FakeChatModel:
-        def with_structured_output(self, schema):
+        def with_structured_output(self, schema, **kwargs):
             return self
 
         def invoke(self, messages):
@@ -56,8 +56,6 @@ def test_full_graph_runs_with_injected_fake_chat_model(tmp_path, monkeypatch):
                 else f"{criterion_id}:n/a"
             )
             return {
-                "judge": "TechLead",
-                "criterion_id": criterion_id,
                 "score": 3,
                 "argument": "src/state.py: retain typed state and reducers.",
                 "cited_evidence": [citation],
@@ -79,7 +77,7 @@ def test_full_graph_runs_with_injected_fake_chat_model(tmp_path, monkeypatch):
     )
     rubric_path = repository / "rubric.json"
     result = build_graph(
-        llm_factory=lambda model, temperature: FakeChatModel()
+        llm_factory=lambda model, **kwargs: FakeChatModel()
     ).invoke(
         {
             "repo_url": "https://github.com/example/repo",
