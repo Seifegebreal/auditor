@@ -1,0 +1,2 @@
+"""Automaton Auditor application package."""
+

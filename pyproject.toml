@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "automaton-auditor"
+version = "0.1.0"
+description = "A LangGraph-based, evidence-grounded repository audit swarm."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain>=1.0,<2",
+    "langchain-openai>=1.0,<2",
+    "langgraph>=1.0,<2",
+    "pydantic>=2.7,<3",
+    "docling>=2.0,<3",
+    "python-dotenv>=1.0,<2",
+    "pymupdf>=1.24,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<10"]
+
+[project.scripts]
+automaton-auditor = "src.main:main"
+check-audit-report = "scripts.check_report_paths:main"
+draw-auditor-topology = "scripts.draw_topology:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "scripts"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"rubric.json" = "rubric.json"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,56 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	ContextBuilder(ContextBuilder<hr/><small><em>layer = setup</em></small>)
+	RepoInvestigator(RepoInvestigator<hr/><small><em>agent = RepoInvestigator</em></small>)
+	DocAnalyst(DocAnalyst<hr/><small><em>agent = DocAnalyst</em></small>)
+	VisionInspector(VisionInspector<hr/><small><em>agent = VisionInspector</em></small>)
+	EvidenceAggregator(EvidenceAggregator<hr/><small><em>layer = evidence-aggregation</em></small>)
+	JudicialDispatch(JudicialDispatch<hr/><small><em>layer = judicial-dispatch</em></small>)
+	Prosecutor(Prosecutor<hr/><small><em>layer = judges
+judge = Prosecutor</em></small>)
+	Defense(Defense<hr/><small><em>layer = judges
+judge = Defense</em></small>)
+	TechLead(TechLead<hr/><small><em>layer = judges
+judge = TechLead</em></small>)
+	ChiefJustice(ChiefJustice<hr/><small><em>agent = ChiefJustice</em></small>)
+	ErrorReport(ErrorReport<hr/><small><em>layer = error</em></small>)
+	__end__([<p>__end__</p>]):::last
+	ContextBuilder --> DocAnalyst;
+	ContextBuilder --> RepoInvestigator;
+	ContextBuilder --> VisionInspector;
+	Defense --> ChiefJustice;
+	DocAnalyst --> EvidenceAggregator;
+	EvidenceAggregator -. &nbsp;evidence_missing&nbsp; .-> ErrorReport;
+	EvidenceAggregator -. &nbsp;evidence_ok&nbsp; .-> JudicialDispatch;
+	JudicialDispatch --> Defense;
+	JudicialDispatch --> Prosecutor;
+	JudicialDispatch --> TechLead;
+	Prosecutor --> ChiefJustice;
+	RepoInvestigator --> EvidenceAggregator;
+	TechLead --> ChiefJustice;
+	VisionInspector --> EvidenceAggregator;
+	__start__ --> ContextBuilder;
+	ChiefJustice --> __end__;
+	ErrorReport --> __end__;
+	classDef default color:#222,fill:#f2f0ff,line-height:1.2
+	classDef first fill:#dbeafe,stroke:#2563eb,color:#222,fill-opacity:1
+	classDef last fill:#bfb6fc
+classDef setup fill:#dbeafe,stroke:#2563eb,color:#222
+class ContextBuilder setup
+classDef detectives fill:#dcfce7,stroke:#16a34a,color:#222
+class RepoInvestigator,DocAnalyst,VisionInspector detectives
+classDef aggregation fill:#fef3c7,stroke:#d97706,color:#222
+class EvidenceAggregator aggregation
+classDef dispatch fill:#ede9fe,stroke:#7c3aed,color:#222
+class JudicialDispatch dispatch
+classDef judges fill:#fce7f3,stroke:#db2777,color:#222
+class Prosecutor,Defense,TechLead judges
+classDef justice fill:#cffafe,stroke:#0891b2,color:#222
+class ChiefJustice justice
+classDef error fill:#fee2e2,stroke:#dc2626,color:#222
+class ErrorReport error

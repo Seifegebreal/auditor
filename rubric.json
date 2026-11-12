@@ -1,0 +1,96 @@
+{
+  "rubric_metadata": {
+    "rubric_name": "Week 2: The Automaton Auditor Self-Evaluation",
+    "grading_target": "Week 2 Auditor Repository & Architectural Report",
+    "version": "3.0.0"
+  },
+  "dimensions": [
+    {
+      "id": "git_forensic_analysis",
+      "name": "Git Forensic Analysis",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Inspect the reverse chronological git log, count commits, capture messages and timestamps, and assess whether the history progresses from environment setup through tool engineering to graph orchestration.",
+      "success_pattern": "More than 3 commits show clear, atomic progression with meaningful commit messages.",
+      "failure_pattern": "A single init commit or bulk upload hides development history; timestamps are clustered within minutes."
+    },
+    {
+      "id": "state_management_rigor",
+      "name": "State Management Rigor",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Use AST inspection of src/state.py or src/graph.py to locate BaseModel or TypedDict state and Evidence/JudicialOpinion models. Verify Annotated operator.add and operator.ior reducers.",
+      "success_pattern": "AgentState is typed with reducers; Evidence and JudicialOpinion are validated Pydantic models.",
+      "failure_pattern": "Plain dictionaries, missing evidence/opinion models, or absent reducers risk parallel state overwrites."
+    },
+    {
+      "id": "graph_orchestration",
+      "name": "Graph Orchestration Architecture",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Parse StateGraph edges via AST. Verify parallel detective and judge fan-outs, an evidence synchronization node, judge fan-in before ChiefJustice, and conditional error handling.",
+      "success_pattern": "Both layers have explicit parallel fan-out/fan-in; EvidenceAggregator precedes judges and conditional routing handles missing evidence.",
+      "failure_pattern": "A linear graph lacks parallel branches, synchronization, or conditional error handling."
+    },
+    {
+      "id": "safe_tool_engineering",
+      "name": "Safe Tool Engineering",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Inspect src/tools cloning code for TemporaryDirectory isolation, subprocess error handling, return-code checks, URL validation, and raw os.system calls.",
+      "success_pattern": "Clones are isolated in TemporaryDirectory; subprocess output and failures are handled, URLs validated, and os.system is absent.",
+      "failure_pattern": "Unsafe shell invocation, unsanitized URLs, live-directory cloning, or unhandled subprocess failures."
+    },
+    {
+      "id": "structured_output_enforcement",
+      "name": "Structured Output Enforcement",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Inspect judge nodes for with_structured_output or bound tools using JudicialOpinion, validated fields, retries, and malformed-output handling.",
+      "success_pattern": "Every judge uses validated JudicialOpinion structured output and retries malformed responses without fabricating a score.",
+      "failure_pattern": "Judges return free-form output without schema validation or retry handling."
+    },
+    {
+      "id": "judicial_nuance",
+      "name": "Judicial Nuance and Dialectics",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Compare Prosecutor, Defense, and TechLead prompt texts for overlap and verify their adversarial, effort-aware, and pragmatic roles plus independent parallel evaluation.",
+      "success_pattern": "Three distinct conflicting personas examine the same evidence in parallel and provide grounded arguments.",
+      "failure_pattern": "A monolithic grader, colluding prompts, fabricated opinions, or identical reasoning."
+    },
+    {
+      "id": "chief_justice_synthesis",
+      "name": "Chief Justice Synthesis Engine",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Inspect deterministic synthesis for security override, fact supremacy, functionality weighting, variance re-evaluation, dissent, and Markdown report writing.",
+      "success_pattern": "Named deterministic rules resolve conflict, explain dissent, and write an actionable Markdown report.",
+      "failure_pattern": "Synthesis only averages opinions, omits deterministic rules or dissent, or does not create a report."
+    },
+    {
+      "id": "theoretical_depth",
+      "name": "Theoretical Depth (Documentation)",
+      "target_artifact": "pdf_report",
+      "forensic_instruction": "Search the PDF for Dialectical Synthesis, Fan-In / Fan-Out, Metacognition, and State Synchronization. Determine whether each is explained through actual architecture rather than name-dropped.",
+      "success_pattern": "The report explains how judges implement dialectics, graph edges synchronize fan-in/fan-out, and the audit improves its evaluation through metacognition.",
+      "failure_pattern": "Terms appear only as unsupported buzzwords or in an executive summary."
+    },
+    {
+      "id": "report_accuracy",
+      "name": "Report Accuracy (Cross-Reference)",
+      "target_artifact": "pdf_report",
+      "forensic_instruction": "Extract file paths claimed in the report and compare them with the RepoInvestigator manifest. Identify unsupported paths and implementation claims contradicted by code evidence.",
+      "success_pattern": "Cited paths exist and feature claims agree with repository evidence; no hallucinations.",
+      "failure_pattern": "Nonexistent files or implementation claims contradicted by repository evidence."
+    },
+    {
+      "id": "swarm_visual",
+      "name": "Architectural Diagram Analysis",
+      "target_artifact": "pdf_images",
+      "forensic_instruction": "Extract and classify report diagrams. Verify they depict parallel detectives, evidence aggregation, parallel judges, ChiefJustice synthesis, and a flow consistent with the code.",
+      "success_pattern": "The diagram clearly and accurately shows both parallel branches and their synchronization points.",
+      "failure_pattern": "No diagram, a generic or linear diagram, or a diagram inconsistent with the implementation."
+    }
+  ],
+  "synthesis_rules": {
+    "security_override": "Confirmed security flaws such as unsafe shell execution or unsanitized clone inputs cap the affected criterion and total score at 3.",
+    "fact_supremacy": "Forensic facts overrule unsupported judicial claims; an opinion must cite existing evidence and Defense cannot prevail without supporting evidence.",
+    "functionality_weight": "The Tech Lead receives the highest weight for graph orchestration functionality.",
+    "dissent_requirement": "Every criterion with judge score variance greater than 2 includes explicit dissent explaining the disagreement.",
+    "variance_re_evaluation": "When scores differ by more than 2, discard opinions with ungrounded citations, then use the grounded Tech Lead opinion as tie-breaker."
+  }
+}
