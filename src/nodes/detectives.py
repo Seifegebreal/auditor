@@ -234,19 +234,26 @@ def doc_analyst_node(state: AgentState) -> Dict[str, Any]:
     try:
         report_text, chunks = _document_content(report_path)
         depth = {term: term_context(chunks, term) for term in TERMS}
-        detailed = any(
-            details["hits"] and not details["only_in_summary"]
-            for details in depth.values()
-        )
+        covered_terms = [
+            term
+            for term, details in depth.items()
+            if details["hits"] and not details["only_in_summary"]
+        ]
+        missing_terms = [term for term in TERMS if term not in covered_terms]
+        detailed = not missing_terms
         theoretical = Evidence(
             goal="theoretical_depth",
             found=detailed,
             content=json.dumps(depth, ensure_ascii=False),
             location=report_path,
             rationale=(
-                f"{sum(bool(details['hits'] and not details['only_in_summary']) for details in depth.values())} required concepts have substantive report coverage"
-                if detailed
-                else "Required concepts are missing or occur only in introductory material"
+                f"{len(covered_terms)} of {len(TERMS)} required concepts have "
+                "substantive report coverage."
+                + (
+                    f" Missing or summary-only: {', '.join(missing_terms)}."
+                    if missing_terms
+                    else ""
+                )
             ),
             confidence=0.9,
         )

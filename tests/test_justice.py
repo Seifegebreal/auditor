@@ -117,6 +117,105 @@ def test_variance_over_two_uses_grounded_tech_lead_and_records_dissent():
     assert "[dissent_requirement]" in result.dissent_summary
 
 
+def test_remediation_ignores_colon_prose_and_keeps_perfect_score_clean():
+    evidence = [
+        Evidence(
+            goal="report_accuracy",
+            found=True,
+            content="{}",
+            location="reports/final_report.pdf",
+            rationale="All cited paths are present.",
+            confidence=1.0,
+        )
+    ]
+    opinions = [
+        JudicialOpinion(
+            judge="TechLead",
+            criterion_id="report_accuracy",
+            score=5,
+            argument=(
+                "Opposing view: diagram mismatch suggests inaccuracies; "
+                "however, source diagram matches code, confirming path accuracy."
+            ),
+            cited_evidence=["report_accuracy:reports/final_report.pdf"],
+        )
+    ]
+
+    result, _ = resolve(
+        {"id": "report_accuracy", "name": "Report Accuracy"},
+        opinions,
+        evidence,
+        {},
+    )
+
+    assert result.final_score == 5
+    assert result.remediation == "No action required."
+
+
+def test_remediation_accepts_only_explicit_path_change_line():
+    evidence = [
+        Evidence(
+            goal="report_accuracy",
+            found=True,
+            content="{}",
+            location="reports/final_report.pdf",
+            rationale="A cited architecture concept is not explained.",
+            confidence=1.0,
+        )
+    ]
+    opinion = JudicialOpinion(
+        judge="TechLead",
+        criterion_id="report_accuracy",
+        score=3,
+        argument=(
+            "The explanation is incomplete.\n"
+            "reports/final_report.pdf: explain fan-in and fan-out using the actual graph."
+        ),
+        cited_evidence=["report_accuracy:reports/final_report.pdf"],
+    )
+
+    result, _ = resolve(
+        {"id": "report_accuracy", "name": "Report Accuracy"},
+        [opinion],
+        evidence,
+        {},
+    )
+
+    assert result.remediation == (
+        "reports/final_report.pdf: explain fan-in and fan-out using the actual graph."
+    )
+
+
+def test_low_score_without_valid_recommendation_does_not_claim_no_action():
+    evidence = [
+        Evidence(
+            goal="report_accuracy",
+            found=True,
+            content="{}",
+            location="reports/final_report.pdf",
+            rationale="The concept coverage is incomplete.",
+            confidence=1.0,
+        )
+    ]
+    opinion = JudicialOpinion(
+        judge="TechLead",
+        criterion_id="report_accuracy",
+        score=3,
+        argument="Opposing view: the report lacks detail.",
+        cited_evidence=["report_accuracy:reports/final_report.pdf"],
+    )
+
+    result, _ = resolve(
+        {"id": "report_accuracy", "name": "Report Accuracy"},
+        [opinion],
+        evidence,
+        {},
+    )
+
+    assert "no validated path: change recommendation" in result.remediation
+    assert "No action required" not in result.remediation
+
+
 def test_chief_justice_uses_only_highest_opinion_round():
     evidence = [
         Evidence(

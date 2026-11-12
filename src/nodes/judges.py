@@ -48,6 +48,9 @@ mitigation from an architectural promise, and name the file-level repair require
 score 1, 3, or 5. Anchor every conclusion in the provided evidence and cite no nonexistent
 location. Favor functional architecture over polish for the graph criterion.
 Remediation must use the exact form "path: change".
+If a criterion needs a fix, put one relative-path recommendation on its own final line,
+exactly as "relative/path: change" with no label or surrounding prose on that line.
+Keep the assessment in the argument text; do not make ordinary prose look like a path.
 State the strongest argument for the opposing persona, then say why you reject it.
 """.strip()
 

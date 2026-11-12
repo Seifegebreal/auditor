@@ -60,14 +60,21 @@ uv run check-audit-report --pdf reports/final_report.pdf --repo-root .
 This checks cited paths against Git-tracked files. If `--repo-root` is not a Git
 repository, it warns and checks against files present on disk instead.
 
-Render the full graph topology as Mermaid for interim/final report diagrams:
+The architecture hand-in PDF is rendered from its editable Markdown source:
+
+```powershell
+uv run python scripts\render_architecture_report.py
+```
+
+Render the graph topology as Mermaid source for companion documentation:
 
 ```powershell
 uv run draw-auditor-topology --output reports/auditor-topology.mmd
 ```
 
 The generated Mermaid diagram uses dark text for readability and distinct colors for
-each workflow role.
+each workflow role. The architecture PDF's system map is rendered directly from the
+document source and follows the edges in `src/graph.py`.
 
 ## Architecture
 

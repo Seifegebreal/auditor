@@ -2,7 +2,12 @@ import json
 from contextlib import nullcontext
 
 from src.nodes import detectives
-from src.nodes.detectives import Evidence, evidence_aggregator_node, repo_investigator_node
+from src.nodes.detectives import (
+    Evidence,
+    doc_analyst_node,
+    evidence_aggregator_node,
+    repo_investigator_node,
+)
 
 
 def _dimension(identifier, target="github_repo", instruction="Inspect this artifact."):
@@ -14,6 +19,50 @@ def _dimension(identifier, target="github_repo", instruction="Inspect this artif
         "success_pattern": "present",
         "failure_pattern": "missing",
     }
+
+
+def test_doc_analyst_requires_substantive_coverage_of_every_concept(tmp_path):
+    report = tmp_path / "report.md"
+    report.write_text(
+        "# Introduction\n"
+        "Metacognition is one of the required concepts.\n"
+        "# Architecture\n"
+        "Dialectical Synthesis uses independent judges. Fan-In and Fan-Out "
+        "are implemented by graph edges. State Synchronization uses reducers.",
+        encoding="utf-8",
+    )
+    result = doc_analyst_node(
+        {
+            "pdf_path": str(report),
+            "rubric_dimensions": [_dimension("theoretical_depth", "pdf_report")],
+        }
+    )
+    evidence = result["evidences"]["DocAnalyst"][0]
+
+    assert not evidence.found
+    assert "4 of 5" in evidence.rationale
+    assert "Metacognition" in evidence.rationale
+
+
+def test_doc_analyst_accepts_detailed_coverage_of_every_concept(tmp_path):
+    report = tmp_path / "report.md"
+    report.write_text(
+        "# Architecture\n"
+        "Dialectical Synthesis uses independent judges. Fan-In and Fan-Out "
+        "are implemented by graph edges. Metacognition guides human review. "
+        "State Synchronization uses reducers.",
+        encoding="utf-8",
+    )
+    result = doc_analyst_node(
+        {
+            "pdf_path": str(report),
+            "rubric_dimensions": [_dimension("theoretical_depth", "pdf_report")],
+        }
+    )
+    evidence = result["evidences"]["DocAnalyst"][0]
+
+    assert evidence.found
+    assert "5 of 5" in evidence.rationale
 
 
 def test_repo_scanner_failure_is_isolated_and_instructions_are_attached(monkeypatch, tmp_path):

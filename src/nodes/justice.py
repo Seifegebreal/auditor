@@ -1,4 +1,5 @@
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -17,6 +18,10 @@ WEIGHTS = {
     "graph_orchestration": {"Prosecutor": 0.2, "Defense": 0.2, "TechLead": 0.6},
 }
 CONFIG = {"variance_threshold": 2, "security_cap": 3}
+_ACTIONABLE_REMEDIATION = re.compile(
+    r"^(?P<path>(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.-]+):"
+    r"\s*(?P<change>\S.*)$"
+)
 
 STATUTES = [
     (
@@ -66,6 +71,15 @@ def _grounded(opinion: JudicialOpinion, evidence: List[Evidence]) -> bool:
         ):
             return True
     return False
+
+
+def _actionable_recommendation(argument: str) -> str | None:
+    for line in argument.splitlines():
+        candidate = line.strip()
+        match = _ACTIONABLE_REMEDIATION.fullmatch(candidate)
+        if match and match.group("change").strip():
+            return f"{match.group('path')}: {match.group('change').strip()}"
+    return None
 
 
 def resolve(
@@ -220,10 +234,15 @@ def resolve(
         if not item.found
     ]
     remediation.extend(
-        opinion.argument
+        recommendation
         for opinion in tech_lead
-        if ":" in opinion.argument
+        if (recommendation := _actionable_recommendation(opinion.argument))
     )
+    if not remediation and score < 5:
+        remediation.append(
+            "Review the findings above; no validated path: change recommendation "
+            "was provided."
+        )
     result = CriterionResult(
         dimension_id=criterion_id,
         dimension_name=dimension["name"],
