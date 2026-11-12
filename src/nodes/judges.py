@@ -154,11 +154,14 @@ def make_judge_node(
         opinions: List[JudicialOpinion] = []
         errors: List[str] = []
         evidence_by_goal: Dict[str, list[dict[str, Any]]] = {}
+        unverified_goals = set()
         for group in state.get("evidences", {}).values():
             for evidence in group:
                 evidence_by_goal.setdefault(evidence.goal, []).append(
                     evidence.model_dump()
                 )
+                if evidence.verification_status == "unverified":
+                    unverified_goals.add(evidence.goal)
 
         def evaluate(dimension: Dict[str, str]) -> JudicialOpinion | None:
             evidence = evidence_by_goal.get(dimension["id"], [])
@@ -208,10 +211,15 @@ def make_judge_node(
             )
 
         dimensions = state.get("rubric_dimensions", [])
+        scorable_dimensions = [
+            dimension
+            for dimension in dimensions
+            if dimension["id"] not in unverified_goals
+        ]
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {
                 executor.submit(evaluate, dimension): dimension
-                for dimension in dimensions
+                for dimension in scorable_dimensions
             }
             results: Dict[str, tuple[JudicialOpinion | None, str | None]] = {}
             for future in as_completed(futures):
@@ -222,7 +230,7 @@ def make_judge_node(
                     errors.append(f"{judge} failed on {dimension['id']}: {exc}")
                     results[dimension["id"]] = (None, str(exc))
 
-        for dimension in dimensions:
+        for dimension in scorable_dimensions:
             opinion, failure = results.get(
                 dimension["id"], (None, "no result returned")
             )

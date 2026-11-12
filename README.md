@@ -25,10 +25,12 @@ set `VISION_MODEL` to a vision-capable LangChain model to enable it. Judge respo
 up to 4,096 output tokens. Judge identity and criterion IDs are attached by the application;
 opinion fields use function calling with validated JSON-text fallback for compatible
 OpenAI-style providers. LangSmith tracing is configured through the environment variables
-in `.env.example`. The rubric and output
-directory must be selected through `AUDITOR_RUBRIC`/`AUDIT_OUTPUT_DIR` or the matching
-CLI options; clone hosts default to GitHub and GitLab and can be changed with
-`ALLOWED_GIT_HOSTS`.
+in `.env.example`. When vision is unset, the auditor checks Mermaid (`.mmd`) sources in
+the inspected repository as supplemental topology evidence. This fallback does not score
+the PDF diagram criterion or verify PDF inclusion/rendering; that criterion is marked
+unverified and excluded from the overall score. The rubric and output directory must be
+selected through `AUDITOR_RUBRIC`/`AUDIT_OUTPUT_DIR` or the matching CLI options; clone
+hosts default to GitHub and GitLab and can be changed with `ALLOWED_GIT_HOSTS`.
 
 ## Run
 

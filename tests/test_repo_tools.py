@@ -8,6 +8,7 @@ from src.tools.repo_tools import (
     analyze_graph_structure,
     analyze_judge_prompts,
     analyze_justice,
+    analyze_mermaid_diagram,
     analyze_state_file,
     git_forensics,
     list_files,
@@ -16,6 +17,60 @@ from src.tools.repo_tools import (
     sandboxed_clone,
     validate_repo_url,
 )
+
+
+def test_analyze_mermaid_diagram_checks_required_parallel_flow(tmp_path):
+    diagram = tmp_path / "reports" / "auditor-topology.mmd"
+    diagram.parent.mkdir()
+    diagram.write_text(
+        "graph TD\n"
+        "__start__([Start])\n"
+        "__start__ --> ContextBuilder\n"
+        "ContextBuilder --> RepoInvestigator\n"
+        "ContextBuilder --> DocAnalyst\n"
+        "ContextBuilder --> VisionInspector\n"
+        "RepoInvestigator --> EvidenceAggregator\n"
+        "DocAnalyst --> EvidenceAggregator\n"
+        "VisionInspector --> EvidenceAggregator\n"
+        "EvidenceAggregator -. evidence_ok .-> JudicialDispatch\n"
+        "JudicialDispatch --> Prosecutor\n"
+        "JudicialDispatch --> Defense\n"
+        "JudicialDispatch --> TechLead\n"
+        "Prosecutor --> ChiefJustice\n"
+        "Defense --> ChiefJustice\n"
+        "TechLead --> ChiefJustice\n"
+        "ChiefJustice --> __end__\n",
+        encoding="utf-8",
+    )
+
+    result = analyze_mermaid_diagram(tmp_path)
+
+    assert result["found"]
+    assert result["location"] == "reports/auditor-topology.mmd"
+    assert result["facts"]["analysis_method"] == "mermaid_source_fallback"
+    assert result["facts"]["pdf_inclusion_verified"] is False
+    assert "PDF inclusion and rendering were not verified" in result["rationale"]
+    assert result["facts"]["diagrams"][0]["shows_fan_in_before_judges"]
+
+
+def test_analyze_mermaid_diagram_rejects_linear_or_missing_source(tmp_path):
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir()
+    (report_dir / "simple.mmd").write_text(
+        "graph TD\nStart --> RepoInvestigator --> EvidenceAggregator --> ChiefJustice --> End\n",
+        encoding="utf-8",
+    )
+
+    result = analyze_mermaid_diagram(tmp_path)
+
+    assert not result["found"]
+    assert "do not show the complete" in result["rationale"]
+    assert result["facts"]["diagrams"][0]["classification"] == "generic_flowchart"
+
+    (report_dir / "simple.mmd").unlink()
+    missing = analyze_mermaid_diagram(tmp_path)
+    assert not missing["found"]
+    assert "No Mermaid source file" in missing["rationale"]
 
 
 def test_validate_repo_url_accepts_only_github_repository_https_urls():
@@ -81,14 +136,17 @@ def test_graph_ast_scanner_detects_explicit_fan_out_and_fan_in(tmp_path):
                 "builder = StateGraph(AgentState)",
                 "builder.add_node('RepoInvestigator', repo)",
                 "builder.add_node('DocAnalyst', doc)",
+                "builder.add_node('VisionInspector', vision)",
                 "builder.add_node('EvidenceAggregator', aggregate)",
                 "builder.add_node('Prosecutor', prosecutor)",
                 "builder.add_node('Defense', defense)",
                 "builder.add_node('TechLead', techlead)",
                 "builder.add_edge('ContextBuilder', 'RepoInvestigator')",
                 "builder.add_edge('ContextBuilder', 'DocAnalyst')",
+                "builder.add_edge('ContextBuilder', 'VisionInspector')",
                 "builder.add_edge('RepoInvestigator', 'EvidenceAggregator')",
                 "builder.add_edge('DocAnalyst', 'EvidenceAggregator')",
+                "builder.add_edge('VisionInspector', 'EvidenceAggregator')",
                 "builder.add_edge('Dispatch', 'Prosecutor')",
                 "builder.add_edge('Dispatch', 'Defense')",
                 "builder.add_edge('Dispatch', 'TechLead')",

@@ -8,6 +8,7 @@ from typing_extensions import TypedDict
 class Evidence(BaseModel):
     goal: str = Field(description="Rubric dimension ID this evidence answers")
     found: bool
+    verification_status: Optional[Literal["verified", "unverified"]] = None
     content: Optional[str] = Field(
         default=None, description="JSON facts or a supporting source snippet"
     )
@@ -30,7 +31,8 @@ class JudicialOpinion(BaseModel):
 class CriterionResult(BaseModel):
     dimension_id: str
     dimension_name: str
-    final_score: int = Field(ge=1, le=5)
+    status: Literal["evaluated", "unverified"] = "evaluated"
+    final_score: Optional[int] = Field(default=None, ge=1, le=5)
     judge_opinions: List[JudicialOpinion]
     dissent_summary: Optional[str] = Field(
         default=None, description="Required when grounded scores differ by more than 2"
@@ -42,7 +44,7 @@ class CriterionResult(BaseModel):
 class AuditReport(BaseModel):
     repo_url: str
     executive_summary: str
-    overall_score: float
+    overall_score: Optional[float] = None
     criteria: List[CriterionResult]
     remediation_plan: str
 

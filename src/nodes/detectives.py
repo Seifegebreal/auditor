@@ -20,6 +20,7 @@ from src.tools.repo_tools import (
     analyze_graph_structure,
     analyze_judge_prompts,
     analyze_justice,
+    analyze_mermaid_diagram,
     analyze_state_file,
     git_forensics,
     list_files,
@@ -118,6 +119,13 @@ def context_builder_node(state: AgentState) -> Dict[str, Any]:
 
 def repo_investigator_node(state: AgentState) -> Dict[str, Any]:
     dimensions = _dimensions_for(state, "github_repo")
+    diagram_fallback_requested = (
+        not os.getenv("VISION_MODEL", "").strip()
+        and any(
+            dimension["id"] == "swarm_visual"
+            for dimension in _dimensions_for(state, "pdf_images")
+        )
+    )
     try:
         with sandboxed_clone(state["repo_url"]) as repository:
             evidences = []
@@ -142,16 +150,33 @@ def repo_investigator_node(state: AgentState) -> Dict[str, Any]:
                             dimension["forensic_instruction"],
                         )
                     )
+            if diagram_fallback_requested:
+                evidences.append(
+                    _safe(
+                        "swarm_visual_source",
+                        analyze_mermaid_diagram,
+                        repository,
+                        "Vision is not configured; inspect repository Mermaid source "
+                        "for the required parallel flow. This does not verify PDF inclusion.",
+                    )
+                )
             manifest = list_files(repository)
     except Exception as exc:
         message = f"RepoInvestigator: {exc}"
+        evidences = [
+            _missing(dimension["id"], "repository", str(exc))
+            for dimension in dimensions
+        ]
+        if diagram_fallback_requested:
+            evidences.append(
+                _missing(
+                    "swarm_visual_source",
+                    "repository (*.mmd)",
+                    f"Mermaid fallback could not inspect the repository: {exc}",
+                )
+            )
         return {
-            "evidences": {
-                "RepoInvestigator": [
-                    _missing(dimension["id"], "repository", str(exc))
-                    for dimension in dimensions
-                ]
-            },
+            "evidences": {"RepoInvestigator": evidences},
             "errors": [message],
         }
     return {
@@ -268,11 +293,27 @@ def vision_inspector_node(state: AgentState) -> Dict[str, Any]:
             }
         }
     model_name = os.getenv("VISION_MODEL")
-    if not model_name:
+    if not model_name or not model_name.strip():
         return {
             "evidences": {
                 "VisionInspector": [
-                    _missing(goal, report_path, "Vision inspection not run: VISION_MODEL is unset")
+                    Evidence(
+                        goal=goal,
+                        found=False,
+                        verification_status="unverified",
+                        content=json.dumps(
+                            {
+                                "verification_status": "unverified",
+                                "verification_scope": "pdf_images",
+                            }
+                        ),
+                        location=report_path,
+                        rationale=(
+                            "PDF diagram inspection is unverified because "
+                            "VISION_MODEL is unset"
+                        ),
+                        confidence=0.0,
+                    )
                     for goal in goals
                 ]
             }
@@ -280,7 +321,7 @@ def vision_inspector_node(state: AgentState) -> Dict[str, Any]:
     try:
         from langchain.chat_models import init_chat_model
 
-        model = init_chat_model(model_name).with_structured_output(DiagramFacts)
+        model = init_chat_model(model_name.strip()).with_structured_output(DiagramFacts)
         with tempfile.TemporaryDirectory(prefix="auditor_images_") as temporary_directory:
             image_paths = extract_images_from_pdf(report_path, temporary_directory)
             diagrams = []
@@ -361,9 +402,26 @@ def evidence_aggregator_node(state: AgentState) -> Dict[str, Any]:
         None,
     )
     visual_evidence = next(
-        (item for item in all_evidence if item.goal == "swarm_visual"),
+        (
+            item
+            for item in state.get("evidences", {}).get("VisionInspector", [])
+            if item.goal == "swarm_visual"
+            and item.verification_status != "unverified"
+        ),
         None,
     )
+    diagram_analysis_method = "vision" if visual_evidence is not None else "unavailable"
+    if visual_evidence is None:
+        visual_evidence = next(
+            (
+                item
+                for item in state.get("evidences", {}).get("RepoInvestigator", [])
+                if item.goal == "swarm_visual_source"
+            ),
+            None,
+        )
+        if visual_evidence is not None:
+            diagram_analysis_method = "mermaid_source_fallback"
     graph_facts: Dict[str, Any] = {}
     visual_facts: Dict[str, Any] = {}
     if graph_evidence and graph_evidence.content:
@@ -377,12 +435,40 @@ def evidence_aggregator_node(state: AgentState) -> Dict[str, Any]:
         except json.JSONDecodeError:
             visual_facts = {}
     diagrams = visual_facts.get("diagrams", [])
-    diagram_matches_code = bool(diagrams) and any(
-        diagram.get("shows_parallel_detectives")
-        == bool(graph_facts.get("detective_fan_out"))
-        and diagram.get("shows_parallel_judges")
-        == bool(graph_facts.get("judge_fan_out"))
-        for diagram in diagrams
+    diagram_analysis_method = visual_facts.get(
+        "analysis_method", diagram_analysis_method
+    )
+    diagram_pdf_inclusion_verified = (
+        diagram_analysis_method == "vision"
+        and visual_evidence is not None
+        and visual_evidence.found
+        and bool(diagrams)
+    )
+    diagram_matches_code = (
+        diagram_analysis_method == "vision"
+        and bool(visual_evidence and visual_evidence.found)
+        and any(
+            diagram.get("shows_parallel_detectives")
+            == bool(graph_facts.get("detective_fan_out"))
+            and diagram.get("shows_parallel_judges")
+            == bool(graph_facts.get("judge_fan_out"))
+            and diagram.get("shows_fan_in_before_judges")
+            == bool(graph_facts.get("evidence_aggregator_before_judges"))
+            for diagram in diagrams
+        )
+    )
+    source_diagram_matches_code = (
+        diagram_analysis_method == "mermaid_source_fallback"
+        and bool(visual_evidence and visual_evidence.found)
+        and any(
+            diagram.get("shows_parallel_detectives")
+            == bool(graph_facts.get("detective_fan_out"))
+            and diagram.get("shows_parallel_judges")
+            == bool(graph_facts.get("judge_fan_out"))
+            and diagram.get("shows_fan_in_before_judges")
+            == bool(graph_facts.get("evidence_aggregator_before_judges"))
+            for diagram in diagrams
+        )
     )
     report_path = state.get("pdf_path", "n/a")
     evidence = Evidence(
@@ -394,13 +480,19 @@ def evidence_aggregator_node(state: AgentState) -> Dict[str, Any]:
                 "hallucinated_paths": hallucinated,
                 "claimed_path_count": len(set(claimed_paths)),
                 "diagram_matches_code": diagram_matches_code,
+                "source_diagram_matches_code": source_diagram_matches_code,
+                "diagram_analysis_method": diagram_analysis_method,
+                "diagram_pdf_inclusion_verified": diagram_pdf_inclusion_verified,
             },
             ensure_ascii=False,
         ),
         location=report_path,
         rationale=(
             f"{len(verified)} verified, {len(hallucinated)} hallucinated report paths; "
-            f"diagram_matches_code={diagram_matches_code}"
+            f"diagram_matches_code={diagram_matches_code}; "
+            f"source_diagram_matches_code={source_diagram_matches_code}; "
+            f"diagram_analysis_method={diagram_analysis_method}; "
+            f"diagram_pdf_inclusion_verified={diagram_pdf_inclusion_verified}"
         ),
         confidence=0.9 if manifest else 0.0,
     )

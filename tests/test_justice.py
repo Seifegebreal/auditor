@@ -39,6 +39,56 @@ def test_missing_artifact_overrules_defense_opinion():
     assert "[fact_supremacy] Defense overruled" in result.dissent_summary
 
 
+def test_unverified_criterion_is_not_scored_or_included_in_overall(tmp_path):
+    dimension = {"id": "swarm_visual", "name": "Architectural Diagram Analysis"}
+    evidence = Evidence(
+        goal="swarm_visual",
+        found=False,
+        verification_status="unverified",
+        content='{"verification_status":"unverified","verification_scope":"pdf_images"}',
+        location="report.pdf",
+        rationale="Vision is not configured; PDF diagram was not inspected.",
+        confidence=0.0,
+    )
+    opinions = [
+        JudicialOpinion(
+            judge=judge,
+            criterion_id="swarm_visual",
+            score=1,
+            argument="No diagram.",
+            cited_evidence=["swarm_visual:report.pdf"],
+        )
+        for judge in ("Prosecutor", "Defense", "TechLead")
+    ]
+
+    result, charges = resolve(dimension, opinions, [evidence], {})
+    assert result.status == "unverified"
+    assert result.final_score is None
+    assert result.judge_opinions == []
+    assert not charges
+
+    report_result = chief_justice_node(
+        {
+            "repo_url": "https://github.com/owner/repo",
+            "output_dir": str(tmp_path),
+            "rubric_dimensions": [dimension],
+            "opinions": opinions,
+            "evidences": {"VisionInspector": [evidence]},
+        }
+    )
+    report = report_result["final_report"]
+    assert report.overall_score is None
+    assert report.criteria[0].final_score is None
+    assert report.criteria[0].status == "unverified"
+    assert "1 unverified" in report.executive_summary
+    assert "Overall score not computed" in report.executive_summary
+    assert "Overall score:** Not computed" in report_result["report_markdown"]
+    assert (
+        "### Architectural Diagram Analysis: Unverified"
+        in report_result["report_markdown"]
+    )
+
+
 def test_variance_over_two_uses_grounded_tech_lead_and_records_dissent():
     evidence = [
         Evidence(
@@ -98,7 +148,7 @@ def test_chief_justice_handles_missing_opinion_and_evidence_keys(tmp_path):
         }
     )["final_report"]
     assert report.criteria == []
-    assert report.overall_score == 0
+    assert report.overall_score is None
 
 
 def test_security_rule_caps_criterion_and_total_score(tmp_path):

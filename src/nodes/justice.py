@@ -99,6 +99,28 @@ def resolve(
         if opinion not in grounded_opinions
     ]
     criterion_evidence = [item for item in evidence if item.goal == criterion_id]
+    unverified_evidence = [
+        item
+        for item in criterion_evidence
+        if item.verification_status == "unverified"
+    ]
+    if unverified_evidence:
+        result = CriterionResult(
+            dimension_id=criterion_id,
+            dimension_name=dimension["name"],
+            status="unverified",
+            final_score=None,
+            judge_opinions=[],
+            remediation=" ".join(
+                f"{item.location}: {item.rationale}" for item in unverified_evidence
+            ),
+            rule_notes=[
+                "[verification] Criterion excluded from scoring because the required "
+                "artifact could not be inspected."
+            ],
+        )
+        return result, []
+
     if not any(item.found for item in criterion_evidence):
         if any(opinion.judge == "Defense" for opinion in grounded_opinions):
             notes.append(
@@ -219,7 +241,11 @@ def render_markdown(report: AuditReport) -> str:
         "# Audit Report",
         "",
         f"**Repository:** {report.repo_url}",
-        f"**Overall score:** {report.overall_score:.1f} / 5",
+        (
+            f"**Overall score:** {report.overall_score:.1f} / 5"
+            if report.overall_score is not None
+            else "**Overall score:** Not computed (no criteria were scored)"
+        ),
         "",
         "## Executive Summary",
         report.executive_summary,
@@ -230,7 +256,11 @@ def render_markdown(report: AuditReport) -> str:
         lines.extend(
             [
                 "",
-                f"### {criterion.dimension_name}: {criterion.final_score}/5",
+                (
+                    f"### {criterion.dimension_name}: {criterion.final_score}/5"
+                    if criterion.final_score is not None
+                    else f"### {criterion.dimension_name}: Unverified"
+                ),
             ]
         )
         for opinion in criterion.judge_opinions:
@@ -287,27 +317,46 @@ def chief_justice_node(state: AgentState) -> Dict[str, Any]:
         results.append(result)
         charges.extend(criterion_charges)
 
+    scored_results = [
+        result for result in results if result.final_score is not None
+    ]
     overall_score = (
-        sum(result.final_score for result in results) / len(results)
-        if results
-        else 0.0
+        sum(
+            result.final_score
+            for result in scored_results
+            if result.final_score is not None
+        )
+        / len(scored_results)
+        if scored_results
+        else None
     )
-    if "Security Negligence" in charges:
+    if "Security Negligence" in charges and overall_score is not None:
         overall_score = min(overall_score, float(CONFIG["security_cap"]))
-    if results:
-        weakest = min(results, key=lambda result: result.final_score)
+    if scored_results:
+        weakest = min(
+            scored_results,
+            key=lambda result: result.final_score
+            if result.final_score is not None
+            else float("inf"),
+        )
         weakest_text = f"Weakest: {weakest.dimension_name}."
     else:
-        weakest_text = "No criteria were available."
+        weakest_text = "No criteria were scored."
     unique_charges = sorted(set(charges))
+    score_summary = (
+        f"Overall {overall_score:.1f}/5"
+        if overall_score is not None
+        else "Overall score not computed"
+    )
     summary = (
-        f"Overall {overall_score:.1f}/5 across {len(results)} criteria. "
-        f"{weakest_text} Charges: {', '.join(unique_charges) or 'none'}."
+        f"{score_summary} across {len(scored_results)} scored criteria; "
+        f"{len(results) - len(scored_results)} unverified. {weakest_text} "
+        f"Charges: {', '.join(unique_charges) or 'none'}."
     )
     plan = "\n".join(
         f"- **{result.dimension_name}:** {result.remediation}"
         for result in results
-        if result.final_score < 5
+        if result.final_score is None or result.final_score < 5
     )
     return _write(
         state,
@@ -328,7 +377,7 @@ def error_report_node(state: AgentState) -> Dict[str, Any]:
         AuditReport(
             repo_url=state.get("repo_url", ""),
             executive_summary=f"Audit aborted: {reason}",
-            overall_score=0.0,
+            overall_score=None,
             criteria=[],
             remediation_plan="Resolve the errors above and rerun the audit.",
         ),

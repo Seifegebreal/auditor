@@ -93,4 +93,13 @@ def test_full_graph_runs_with_injected_fake_chat_model(tmp_path, monkeypatch):
     )
     assert len(result["final_report"].criteria) == 10
     assert len(result["final_report"].criteria[0].judge_opinions) == 3
+    visual_result = next(
+        criterion
+        for criterion in result["final_report"].criteria
+        if criterion.dimension_id == "swarm_visual"
+    )
+    assert visual_result.status == "unverified"
+    assert visual_result.final_score is None
+    assert "9 scored criteria; 1 unverified" in result["final_report"].executive_summary
+    assert "### Architectural Diagram Analysis: Unverified" in result["report_markdown"]
     assert Path(result["report_path"]).is_file()

@@ -163,6 +163,36 @@ def test_judge_api_failure_returns_no_fabricated_opinions():
     assert any("unavailable" in error for error in result["errors"])
 
 
+def test_judges_skip_unverified_criteria_without_reporting_failure():
+    class UnexpectedInvokeModel:
+        def with_structured_output(self, schema, **kwargs):
+            return self
+
+        def invoke(self, messages):
+            raise AssertionError("Unverified criteria should not be sent to a judge")
+
+    evidence = Evidence(
+        goal="criterion_0",
+        found=False,
+        verification_status="unverified",
+        location="report.pdf",
+        rationale="Vision is not configured.",
+        confidence=0.0,
+    )
+    result = make_judge_node(
+        "Defense",
+        llm_factory=lambda model, **kwargs: UnexpectedInvokeModel(),
+    )(
+        {
+            "rubric_dimensions": _dimensions(1),
+            "evidences": {"VisionInspector": [evidence]},
+        }
+    )
+
+    assert result["opinions"] == []
+    assert result["errors"] == []
+
+
 def test_judge_reports_last_structured_output_error():
     class InvalidStructuredModel:
         def with_structured_output(self, schema, **kwargs):

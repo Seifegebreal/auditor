@@ -12,6 +12,13 @@ from urllib.parse import urlsplit
 
 _REPO_PATH_PART = re.compile(r"^[A-Za-z0-9_.-]+$")
 _MAX_SOURCE_BYTES = 1_000_000
+_MAX_MERMAID_BYTES = 200_000
+_MAX_MERMAID_FILES = 20
+_MERMAID_EDGE = re.compile(
+    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*"
+    r"(?:-->|==>|-\.\s*.*?\.->|-\.\s*->|--\s*\|.*?\|\s*-->)\s*"
+    r"([A-Za-z_][A-Za-z0-9_]*)\b"
+)
 
 
 class RepoToolError(RuntimeError):
@@ -333,6 +340,7 @@ def analyze_graph_structure(path: str | Path) -> Dict[str, Any]:
     nodes: List[Optional[str]] = []
     edges: List[Tuple[Optional[str], Optional[str]]] = []
     conditional_sources: List[Optional[str]] = []
+    conditional_routes: Dict[Optional[str], List[Optional[str]]] = {}
     relevant_lines: List[int] = []
     has_state_graph = False
 
@@ -355,7 +363,14 @@ def analyze_graph_structure(path: str | Path) -> Dict[str, Any]:
             edges.extend((_node_label(source), _node_label(node.args[1])) for source in sources)
             relevant_lines.append(node.lineno)
         elif name == "add_conditional_edges" and node.args:
-            conditional_sources.append(_node_label(node.args[0]))
+            source = _node_label(node.args[0])
+            conditional_sources.append(source)
+            if len(node.args) > 2 and isinstance(node.args[2], ast.Dict):
+                conditional_routes[source] = [
+                    _node_label(value)
+                    for value in node.args[2].values
+                    if value is not None
+                ]
             relevant_lines.append(node.lineno)
 
     outgoing: Dict[Optional[str], List[Optional[str]]] = {}
@@ -374,7 +389,11 @@ def analyze_graph_structure(path: str | Path) -> Dict[str, Any]:
         "fan_in": fan_in,
         "parallel_fan_out": bool(fan_out),
         "detective_fan_out": any(
-            {"repoinvestigator", "docanalyst"}.issubset(normalized(destinations))
+            {
+                "repoinvestigator",
+                "docanalyst",
+                "visioninspector",
+            }.issubset(normalized(destinations))
             for destinations in fan_out.values()
         ),
         "judge_fan_out": any(
@@ -382,6 +401,13 @@ def analyze_graph_structure(path: str | Path) -> Dict[str, Any]:
             for destinations in fan_out.values()
         ),
         "has_conditional_edges": bool(conditional_sources),
+        "evidence_aggregator_before_judges": (
+            {"repoinvestigator", "docanalyst", "visioninspector"}.issubset(
+                normalized(incoming.get("EvidenceAggregator", []))
+            )
+            and "JudicialDispatch"
+            in conditional_routes.get("EvidenceAggregator", [])
+        ),
         "snippet": (
             "\n".join(text.splitlines()[min(relevant_lines) - 1 : max(relevant_lines)])
             if relevant_lines
@@ -396,6 +422,171 @@ def analyze_graph_structure(path: str | Path) -> Dict[str, Any]:
         f"{fanout_count} fan-out sources, {fanin_count} fan-in targets",
         facts,
         0.95,
+    )
+
+
+def analyze_mermaid_diagram(path: str | Path) -> Dict[str, Any]:
+    root = Path(path)
+    candidates = sorted(
+        (candidate for candidate in root.rglob("*.mmd") if candidate.is_file()),
+        key=lambda candidate: (
+            "topology" not in candidate.name.lower(),
+            "report" not in str(candidate.parent).lower(),
+            str(candidate).lower(),
+        ),
+    )[:_MAX_MERMAID_FILES]
+    diagrams: List[Dict[str, Any]] = []
+    read_errors: List[str] = []
+
+    def normalized(identifier: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", identifier.lower())
+
+    def has_path(
+        outgoing: Dict[str, set[str]], source: str, target: str
+    ) -> bool:
+        pending = [source]
+        visited: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current == target:
+                return True
+            if current not in visited:
+                visited.add(current)
+                pending.extend(outgoing.get(current, set()) - visited)
+        return False
+
+    for candidate in candidates:
+        relative_path = candidate.relative_to(root).as_posix()
+        try:
+            if candidate.stat().st_size > _MAX_MERMAID_BYTES:
+                read_errors.append(f"{relative_path}: exceeds size limit")
+                continue
+            source = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            read_errors.append(f"{relative_path}: {exc}")
+            continue
+
+        edges: set[tuple[str, str]] = set()
+        for line in source.splitlines():
+            match = _MERMAID_EDGE.match(line)
+            if match:
+                edges.add(
+                    (normalized(match.group(1)), normalized(match.group(2)))
+                )
+        outgoing: Dict[str, set[str]] = {}
+        incoming: Dict[str, set[str]] = {}
+        for source_id, target_id in edges:
+            outgoing.setdefault(source_id, set()).add(target_id)
+            incoming.setdefault(target_id, set()).add(source_id)
+
+        detectives = {"repoinvestigator", "docanalyst", "visioninspector"}
+        judges = {"prosecutor", "defense", "techlead"}
+        detective_sources = [
+            source_id
+            for source_id, targets in outgoing.items()
+            if detectives.issubset(targets)
+        ]
+        judge_sources = [
+            source_id
+            for source_id, targets in outgoing.items()
+            if judges.issubset(targets)
+        ]
+        aggregator = "evidenceaggregator"
+        chief_justice = "chiefjustice"
+        start_nodes = {
+            source_id for source_id in outgoing if source_id in {"start", "first"}
+        }
+        end_nodes = {
+            target_id for target_id in incoming if target_id in {"end", "last"}
+        }
+        shows_parallel_detectives = bool(detective_sources)
+        shows_parallel_judges = bool(judge_sources)
+        shows_fan_in_before_judges = (
+            detectives.issubset(incoming.get(aggregator, set()))
+            and bool(judge_sources)
+            and any(
+                has_path(outgoing, aggregator, judge_source)
+                for judge_source in judge_sources
+            )
+        )
+        shows_synthesis = all(
+            chief_justice in outgoing.get(judge, set()) for judge in judges
+        )
+        shows_start_and_end = (
+            bool(start_nodes)
+            and bool(end_nodes)
+            and any(
+                has_path(outgoing, start, detective_source)
+                for start in start_nodes
+                for detective_source in detective_sources
+            )
+            and any(
+                has_path(outgoing, chief_justice, end)
+                for end in end_nodes
+            )
+        )
+        complete = all(
+            (
+                shows_parallel_detectives,
+                shows_parallel_judges,
+                shows_fan_in_before_judges,
+                shows_synthesis,
+                shows_start_and_end,
+            )
+        )
+        diagrams.append(
+            {
+                "classification": (
+                    "langgraph_state_machine" if complete else "generic_flowchart"
+                ),
+                "shows_parallel_detectives": shows_parallel_detectives,
+                "shows_parallel_judges": shows_parallel_judges,
+                "shows_fan_in_before_judges": shows_fan_in_before_judges,
+                "shows_chief_justice_synthesis": shows_synthesis,
+                "shows_start_and_end": shows_start_and_end,
+                "description": (
+                    "Required parallel auditor flow detected in Mermaid source"
+                    if complete
+                    else "Mermaid source is missing one or more required flow connections"
+                ),
+                "source_path": relative_path,
+                "analysis_method": "mermaid_source_fallback",
+            }
+        )
+
+    valid_diagram = next(
+        (diagram for diagram in diagrams if diagram["classification"] == "langgraph_state_machine"),
+        None,
+    )
+    found = valid_diagram is not None
+    location = (
+        valid_diagram["source_path"]
+        if valid_diagram
+        else "repository (*.mmd)"
+    )
+    if found:
+        rationale = (
+            f"{location} contains the required parallel flow in Mermaid source; "
+            "PDF inclusion and rendering were not verified"
+        )
+    elif not candidates:
+        rationale = "No Mermaid source file was found; PDF diagram remains unverified without vision"
+    elif read_errors and not diagrams:
+        rationale = "Mermaid source files could not be inspected: " + "; ".join(read_errors)
+    else:
+        rationale = "Mermaid source files do not show the complete required architecture flow"
+    return _result(
+        found,
+        location,
+        rationale,
+        {
+            "diagrams": diagrams,
+            "analysis_method": "mermaid_source_fallback",
+            "candidate_count": len(candidates),
+            "read_errors": read_errors,
+            "pdf_inclusion_verified": False,
+        },
+        0.8 if found else 0.0 if not candidates else 0.7,
     )
 
 
