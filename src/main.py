@@ -1,9 +1,19 @@
 import argparse
 import os
+import sys
 
 from dotenv import load_dotenv
 
 from src.graph import build_graph
+
+
+def _print_result(result: dict) -> None:
+    print(result["report_path"])
+    errors = result.get("errors", [])
+    if errors:
+        print("Audit completed with errors:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
 
 
 def _arguments() -> argparse.Namespace:
@@ -57,7 +67,7 @@ def main() -> None:
             },
         },
     )
-    print(result["report_path"])
+    _print_result(result)
 
 
 if __name__ == "__main__":
