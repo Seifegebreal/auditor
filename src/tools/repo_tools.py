@@ -568,6 +568,7 @@ def scan_judges(path: str | Path) -> Dict[str, Any]:
         )
     uses_structured_output = False
     bound_to_opinion = False
+    constructs_judicial_opinion = False
     has_retry = False
     relevant_lines: List[int] = []
     for node in ast.walk(tree):
@@ -576,9 +577,14 @@ def scan_judges(path: str | Path) -> Dict[str, Any]:
             if name == "with_structured_output":
                 uses_structured_output = True
                 relevant_lines.append(node.lineno)
-                bound_to_opinion |= any(_node_label(arg) == "JudicialOpinion" for arg in node.args)
+                bound_to_opinion |= any(
+                    _node_label(arg) in {"JudicialOpinion", "JudgeOpinionPayload"}
+                    for arg in node.args
+                )
+            constructs_judicial_opinion |= _node_label(node.func) == "JudicialOpinion"
         if isinstance(node, (ast.For, ast.While)):
             has_retry = True
+    bound_to_opinion &= constructs_judicial_opinion
     facts = {
         "uses_with_structured_output": uses_structured_output,
         "binds_judicial_opinion": bound_to_opinion,
@@ -592,7 +598,7 @@ def scan_judges(path: str | Path) -> Dict[str, Any]:
     return _result(
         uses_structured_output and bound_to_opinion,
         relative_path,
-        "Structured output is bound to JudicialOpinion"
+        "Structured payload is validated and assembled into JudicialOpinion"
         if bound_to_opinion
         else "Structured JudicialOpinion output was not detected",
         facts,
